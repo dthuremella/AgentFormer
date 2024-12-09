@@ -7,6 +7,7 @@ from .common.mlp import MLP
 from .agentformer_loss import loss_func
 from .common.dist import *
 from .agentformer_lib import AgentFormerEncoderLayer, AgentFormerDecoderLayer, AgentFormerDecoder, AgentFormerEncoder
+from MoE import MoELayer
 from .map_encoder import MapEncoder
 from utils.torch import *
 from utils.utils import initialize_weights
@@ -194,7 +195,8 @@ class FutureEncoder(nn.Module):
         self.input_fc = nn.Linear(in_dim, self.model_dim)
 
         decoder_layers = AgentFormerDecoderLayer(ctx['tf_cfg'], self.model_dim, self.nhead, self.ff_dim, self.dropout)
-        self.tf_decoder = AgentFormerDecoder(decoder_layers, self.nlayer)
+        moe_layers = MoELayer(self.model_dim, int(self.model_dim / 4), self.model_dim, num_experts=8)
+        self.tf_decoder = AgentFormerDecoder(decoder_layers, self.nlayer, moe_layers, num_experts_per_tok=2)
 
         self.pos_encoder = PositionalAgentEncoding(self.model_dim, self.dropout, concat=ctx['pos_concat'], max_a_len=ctx['max_agent_len'], use_agent_enc=ctx['use_agent_enc'], agent_enc_learn=ctx['agent_enc_learn'])
         num_dist_params = 2 * self.nz if self.z_type == 'gaussian' else self.nz     # either gaussian or discrete
@@ -288,7 +290,8 @@ class FutureDecoder(nn.Module):
         self.input_fc = nn.Linear(in_dim, self.model_dim)
 
         decoder_layers = AgentFormerDecoderLayer(ctx['tf_cfg'], self.model_dim, self.nhead, self.ff_dim, self.dropout)
-        self.tf_decoder = AgentFormerDecoder(decoder_layers, self.nlayer)
+        moe_layers = MoELayer(self.model_dim, int(self.model_dim / 4), self.model_dim, num_experts=8)
+        self.tf_decoder = AgentFormerDecoder(decoder_layers, self.nlayer, moe_layers, num_experts_per_tok=2)
 
         self.pos_encoder = PositionalAgentEncoding(self.model_dim, self.dropout, concat=ctx['pos_concat'], max_a_len=ctx['max_agent_len'], use_agent_enc=ctx['use_agent_enc'], agent_enc_learn=ctx['agent_enc_learn'])
         if self.out_mlp_dim is None:

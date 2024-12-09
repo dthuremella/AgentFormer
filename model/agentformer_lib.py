@@ -716,10 +716,12 @@ class AgentFormerDecoder(Module):
     """
     __constants__ = ['norm']
 
-    def __init__(self, decoder_layer, num_layers, norm=None):
+    def __init__(self, decoder_layer, num_layers, moe_layer, num_experts_per_tok, norm=None):
         super().__init__()
         self.layers = _get_clones(decoder_layer, num_layers)
         self.num_layers = num_layers
+        self.moe_layers = _get_clones(moe_layer, num_layers)
+        self.num_experts_per_tok = num_experts_per_tok
         self.norm = norm
 
     def forward(self, tgt: Tensor, memory: Tensor, tgt_mask: Optional[Tensor] = None,
@@ -748,6 +750,7 @@ class AgentFormerDecoder(Module):
                          tgt_key_padding_mask=tgt_key_padding_mask,
                          memory_key_padding_mask=memory_key_padding_mask,
                          num_agent=num_agent, need_weights=need_weights)
+            output = self.moe_layers[i](output, self.num_experts_per_tok)
 
         if self.norm is not None:
             output = self.norm(output)
