@@ -7,7 +7,7 @@ from .common.mlp import MLP
 from .agentformer_loss import loss_func
 from .common.dist import *
 from .agentformer_lib import AgentFormerEncoderLayer, AgentFormerDecoderLayer, AgentFormerDecoder, AgentFormerEncoder
-from MoE import MoELayer
+from .MoE import MoELayer
 from .map_encoder import MapEncoder
 from utils.torch import *
 from utils.utils import initialize_weights
