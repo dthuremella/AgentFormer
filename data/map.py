@@ -82,8 +82,8 @@ class GeometricMap(Map):
         :param out_width:
         :return:
         """
-        M = get_rotation_matrix2d(centers, angles, torch.ones_like(angles))
-        rotated_map_batched = warp_affine_crop(map_batched, centers, M,
+        M = get_rotation_matrix2d(centers.to('cuda'), angles.to('cuda'), torch.ones_like(angles, device='cuda'))
+        rotated_map_batched = warp_affine_crop(map_batched.to('cuda'), centers.to('cuda'), M,
                                                dsize=(out_height, out_width), padding_mode='zeros')
 
         return rotated_map_batched

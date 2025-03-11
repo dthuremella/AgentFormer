@@ -14,12 +14,13 @@ class MapCNN(nn.Module):
         strides = cfg.get('strides', [3, 3])
         self.out_dim = out_dim = cfg.get('out_dim', 32)
         self.input_size = input_size = (map_channels, patch_size[0], patch_size[1])
-        x_dummy = torch.randn(input_size).unsqueeze(0)
+        x_dummy = torch.randn(input_size).unsqueeze(0).cuda()
 
         for i, _ in enumerate(hdim):
             self.convs.append(nn.Conv2d(map_channels if i == 0 else hdim[i-1],
                                         hdim[i], kernels[i],
-                                        stride=strides[i]))
+                                        stride=strides[i],
+                                        device='cuda'))
             x_dummy = self.convs[i](x_dummy)
 
         self.fc = nn.Linear(x_dummy.numel(), out_dim)

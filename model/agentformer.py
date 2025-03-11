@@ -20,7 +20,7 @@ def generate_ar_mask(sz, agent_num, agent_mask):
     for t in range(T-1):
         i1 = t * agent_num
         i2 = (t+1) * agent_num
-        mask[i1:i2, i2:] = float('-inf')
+        mask[i1:i2, i2:] = torch.finfo(agent_mask.dtype).min
     return mask
 
 
@@ -553,6 +553,9 @@ class AgentFormer(nn.Module):
         if in_data['heading'] is not None:
             self.data['heading_vec'] = torch.stack([torch.cos(self.data['heading']), torch.sin(self.data['heading'])], dim=-1)
 
+            self.data['heading_vec'] = self.data['heading_vec'].to(self.data['pre_motion'].dtype)
+            self.data['heading'] = self.data['heading'].to(self.data['pre_motion'].dtype)
+
         # agent maps
         if self.use_map:
             scene_map = data['scene_map']
@@ -580,7 +583,7 @@ class AgentFormer(nn.Module):
             D[np.triu_indices(cur_motion.shape[0], 1)] = pdist
             D += D.T
             mask = torch.zeros_like(D)
-            mask[D > threshold] = float('-inf')
+            mask[D > threshold] = torch.finfo(self.data['pre_motion'].dtype).min
         else:
             mask = torch.zeros([cur_motion.shape[0], cur_motion.shape[0]]).to(device)
         self.data['agent_mask'] = mask

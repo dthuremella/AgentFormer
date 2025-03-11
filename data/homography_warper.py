@@ -363,7 +363,7 @@ class HomographyWarper(nn.Module):
         self.padding_mode: str = padding_mode
 
         # create base grid to compute the flow
-        self.grid: torch.Tensor = create_batched_meshgrid(x_min, y_min, x_max, y_max, height, width)
+        self.grid: torch.Tensor = create_batched_meshgrid(x_min, y_min, x_max, y_max, height, width, device=torch.device('cuda'))
 
     def warp_grid(self, dst_homo_src: torch.Tensor) -> torch.Tensor:
         r"""Computes the grid to warp the coordinates grid by an homography.
@@ -414,6 +414,7 @@ class HomographyWarper(nn.Module):
                             Got patch.device: {} dst_H_src.device: {}."
                             .format(patch_src.device, dst_homo_src.device))
 
+        dst_homo_src = dst_homo_src.to(patch_src.dtype)
         return F.grid_sample(patch_src, self.warp_grid(dst_homo_src),  # type: ignore
                              mode=self.mode, padding_mode=self.padding_mode, align_corners=True)
 

@@ -75,6 +75,8 @@ if __name__ == '__main__':
     cfg = Config(args.cfg, args.tmp, create_dirs=True)
     prepare_seed(cfg.seed)
     torch.set_default_dtype(torch.float32)
+    if cfg.fp16:
+        torch.set_default_dtype(torch.float16)
     device = torch.device('cuda', index=args.gpu) if torch.cuda.is_available() else torch.device('cpu')
     if torch.cuda.is_available(): torch.cuda.set_device(args.gpu)
     
@@ -93,6 +95,8 @@ if __name__ == '__main__':
     """ model """
     model_id = cfg.get('model_id', 'agentformer')
     model = model_dict[model_id](cfg)
+    if cfg.fp16:
+        model = model.half() # to make it float16
     optimizer = optim.Adam(model.parameters(), lr=cfg.lr)
     scheduler_type = cfg.get('lr_scheduler', 'linear')
     if scheduler_type == 'linear':
@@ -102,6 +106,7 @@ if __name__ == '__main__':
     else:
         raise ValueError('unknown scheduler type!')
 
+    model.set_device(device)
     if args.start_epoch > 0:
         cp_path = cfg.model_path % args.start_epoch
         print_log(f'loading model from checkpoint: {cp_path}', log)
@@ -113,7 +118,6 @@ if __name__ == '__main__':
             scheduler.load_state_dict(model_cp['scheduler_dict'])
 
     """ start training """
-    model.set_device(device)
     model.train()
     for i in range(args.start_epoch, cfg.num_epochs):
         train(i)
