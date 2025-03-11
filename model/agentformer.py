@@ -195,7 +195,7 @@ class FutureEncoder(nn.Module):
         self.input_fc = nn.Linear(in_dim, self.model_dim)
 
         decoder_layers = AgentFormerDecoderLayer(ctx['tf_cfg'], self.model_dim, self.nhead, self.ff_dim, self.dropout)
-        moe_layers = MoELayer(self.model_dim, int(self.model_dim / 4), self.model_dim, num_experts=8)
+        moe_layers = MoELayer(self.model_dim, int(self.model_dim * 4), self.model_dim, num_experts=8)
         self.tf_decoder = AgentFormerDecoder(decoder_layers, self.nlayer, moe_layers, num_experts_per_tok=2)
 
         self.pos_encoder = PositionalAgentEncoding(self.model_dim, self.dropout, concat=ctx['pos_concat'], max_a_len=ctx['max_agent_len'], use_agent_enc=ctx['use_agent_enc'], agent_enc_learn=ctx['agent_enc_learn'])
@@ -290,7 +290,7 @@ class FutureDecoder(nn.Module):
         self.input_fc = nn.Linear(in_dim, self.model_dim)
 
         decoder_layers = AgentFormerDecoderLayer(ctx['tf_cfg'], self.model_dim, self.nhead, self.ff_dim, self.dropout)
-        moe_layers = MoELayer(self.model_dim, int(self.model_dim / 4), self.model_dim, num_experts=8)
+        moe_layers = MoELayer(self.model_dim, int(self.model_dim * 4), self.model_dim, num_experts=8)
         self.tf_decoder = AgentFormerDecoder(decoder_layers, self.nlayer, moe_layers, num_experts_per_tok=2)
 
         self.pos_encoder = PositionalAgentEncoding(self.model_dim, self.dropout, concat=ctx['pos_concat'], max_a_len=ctx['max_agent_len'], use_agent_enc=ctx['use_agent_enc'], agent_enc_learn=ctx['agent_enc_learn'])
