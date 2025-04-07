@@ -576,7 +576,7 @@ class AgentFormer(nn.Module):
 
             #############################################
             # make agent_num 100 always (agent_maps do later)
-            an = 18
+            an = 19
             num_agent_dim_1 = ['pre_motion', 'fut_motion', 'pre_motion_scene_norm', 'fut_motion_scene_norm', 
                         'pre_vel', 'fut_vel', 'cur_motion', 'pre_motion_norm', 'fut_motion_norm']
             num_agent_dim_0 = ['fut_motion_orig', 'fut_mask', 'fut_motion_orig_scene_norm', 'heading', 'heading_vec']
