@@ -4,7 +4,7 @@ def compute_motion_mse(data, cfg):
     diff = data['fut_motion_orig'] - data['train_dec_motion']
     if cfg.get('mask', True):
         mask = data['fut_mask']
-        diff *= mask.unsqueeze(2)
+        diff *= mask.unsqueeze(-1)
     loss_unweighted = diff.pow(2).sum() 
     if cfg.get('normalize', True):
         loss_unweighted /= diff.shape[0]

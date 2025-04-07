@@ -18,6 +18,7 @@ torch.backends.cudnn.enabled = True
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = True
 
+batch_size = 4
 
 def logging(cfg, epoch, total_epoch, iter, total_iter, ep, seq, frame, losses_str, log):
 	print_log('{} | Epo: {:02d}/{:02d}, '
@@ -35,10 +36,14 @@ def train(epoch):
     train_loss_meter['total_loss'] = AverageMeter()
     last_generator_index = 0
     while not generator.is_epoch_end():
-        data = generator()
-        if data is not None:
-            seq, frame = data['seq'], data['frame']
-            model.set_data(data)
+        data_list = []
+        for i in range(batch_size):
+            data = generator()
+            if data is not None:
+                seq, frame = data['seq'], data['frame']
+                data_list.append(data)
+        if len(data_list) > 0:
+            model.set_data(data_list)
             model_data = model()
             total_loss, loss_dict, loss_unweighted_dict = model.compute_loss()
             """ optimize """

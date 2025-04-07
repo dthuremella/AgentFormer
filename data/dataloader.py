@@ -5,6 +5,7 @@ from .preprocessor import preprocess
 from .ethucy_split import get_ethucy_split
 from utils.utils import print_log
 
+import pickle
 
 class data_generator(object):
 
@@ -53,6 +54,15 @@ class data_generator(object):
         self.index = 0
         print_log(f'total num samples: {self.num_total_samples}', log)
         print_log("------------------------------ done --------------------------------\n", log=log)
+        # import pdb; pdb.set_trace()
+        # list_of_agent_nums = []
+        # for i in self.sample_list:
+        #     seq_index, frame = self.get_seq_and_frame(i)
+        #     seq = self.sequence[seq_index]
+        #     data = seq(frame)
+        #     if data is not None and data['pre_motion_3D'] is not None:
+        #         list_of_agent_nums.append(len(data['pre_motion_3D']))
+        # pickle.dump(list_of_agent_nums, open('list_of_agent_nums.pkl', 'wb'))
 
     def shuffle(self):
         random.shuffle(self.sample_list)

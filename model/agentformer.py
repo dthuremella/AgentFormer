@@ -143,15 +143,15 @@ class ContextEncoder(nn.Module):
             elif key == 'scene_norm':
                 traj_in.append(data['pre_motion_scene_norm'])
             elif key == 'heading':
-                hv = data['heading_vec'].unsqueeze(0).repeat((data['pre_motion'].shape[0], 1, 1))
+                hv = data['heading_vec'].unsqueeze(0).repeat((data['pre_motion'].shape[0], 1, 1, 1))
                 traj_in.append(hv)
             elif key == 'map':
-                map_enc = data['map_enc'].unsqueeze(0).repeat((data['pre_motion'].shape[0], 1, 1))
+                map_enc = data['map_enc'].unsqueeze(0).repeat((data['pre_motion'].shape[0], 1, 1, 1))
                 traj_in.append(map_enc)
             else:
                 raise ValueError('unknown input_type!')
         traj_in = torch.cat(traj_in, dim=-1)
-        tf_in = self.input_fc(traj_in.view(-1, traj_in.shape[-1])).view(-1, 1, self.model_dim)
+        tf_in = self.input_fc(traj_in.view(-1, data['batch_size'], traj_in.shape[-1]))
         agent_enc_shuffle = data['agent_enc_shuffle'] if self.agent_enc_shuffle else None
         tf_in_pos = self.pos_encoder(tf_in, num_a=data['agent_num'], agent_enc_shuffle=agent_enc_shuffle)
         
@@ -160,7 +160,7 @@ class ContextEncoder(nn.Module):
         
         data['context_enc'] = self.tf_encoder(tf_in_pos, mask=src_mask, num_agent=data['agent_num'])
         
-        context_rs = data['context_enc'].view(-1, data['agent_num'], self.model_dim)
+        context_rs = data['context_enc'].view(-1, data['agent_num'], data['batch_size'], self.model_dim)
         # compute per agent context
         if self.pooling == 'mean':
             data['agent_context'] = torch.mean(context_rs, dim=0)
@@ -223,15 +223,15 @@ class FutureEncoder(nn.Module):
             elif key == 'scene_norm':
                 traj_in.append(data['fut_motion_scene_norm'])
             elif key == 'heading':
-                hv = data['heading_vec'].unsqueeze(0).repeat((data['fut_motion'].shape[0], 1, 1))
+                hv = data['heading_vec'].unsqueeze(0).repeat((data['fut_motion'].shape[0], 1, 1, 1))
                 traj_in.append(hv)
             elif key == 'map':
-                map_enc = data['map_enc'].unsqueeze(0).repeat((data['fut_motion'].shape[0], 1, 1))
+                map_enc = data['map_enc'].unsqueeze(0).repeat((data['fut_motion'].shape[0], 1, 1, 1))
                 traj_in.append(map_enc)
             else:
                 raise ValueError('unknown input_type!')
         traj_in = torch.cat(traj_in, dim=-1)
-        tf_in = self.input_fc(traj_in.view(-1, traj_in.shape[-1])).view(-1, 1, self.model_dim)
+        tf_in = self.input_fc(traj_in.view(-1,  data['batch_size'], traj_in.shape[-1]))
         agent_enc_shuffle = data['agent_enc_shuffle'] if self.agent_enc_shuffle else None
         tf_in_pos = self.pos_encoder(tf_in, num_a=data['agent_num'], agent_enc_shuffle=agent_enc_shuffle)
 
@@ -241,7 +241,7 @@ class FutureEncoder(nn.Module):
         tgt_mask = generate_mask(tf_in.shape[0], tf_in.shape[0], data['agent_num'], tgt_agent_mask).to(tf_in.device)
         
         tf_out, _ = self.tf_decoder(tf_in_pos, data['context_enc'], memory_mask=mem_mask, tgt_mask=tgt_mask, num_agent=data['agent_num'])
-        tf_out = tf_out.view(traj_in.shape[0], -1, self.model_dim)
+        tf_out = tf_out.view(traj_in.shape[0], -1, data['batch_size'], self.model_dim)
 
         if self.pooling == 'mean':
             h = torch.mean(tf_out, dim=0)
@@ -316,15 +316,16 @@ class FutureDecoder(nn.Module):
             dec_in = pre_motion_scene_norm[[-1]]
         else:
             dec_in = torch.zeros_like(pre_motion[[-1]])
-        dec_in = dec_in.view(-1, sample_num, dec_in.shape[-1])
-        z_in = z.view(-1, sample_num, z.shape[-1])
+        dec_in = dec_in.view(-1, sample_num, data['batch_size'], dec_in.shape[-1])
+        z_in = z.view(-1, sample_num, data['batch_size'], z.shape[-1])
         in_arr = [dec_in, z_in]
         for key in self.input_type:
-            if key == 'heading':
-                heading = data['heading_vec'].unsqueeze(1).repeat((1, sample_num, 1))
+            # TODO heading_vec, check sizes, do we need to unsqueeze? I still think so
+            if key == 'heading':                
+                heading = data['heading_vec'].unsqueeze(1).repeat((1, sample_num, 1, 1))
                 in_arr.append(heading)
             elif key == 'map':
-                map_enc = data['map_enc'].unsqueeze(1).repeat((1, sample_num, 1))
+                map_enc = data['map_enc'].unsqueeze(1).repeat((1, sample_num, 1, 1))
                 in_arr.append(map_enc)
             else:
                 raise ValueError('wrong decode input type!')
@@ -343,19 +344,20 @@ class FutureDecoder(nn.Module):
 
             tf_out, attn_weights = self.tf_decoder(tf_in_pos, context, memory_mask=mem_mask, tgt_mask=tgt_mask, num_agent=data['agent_num'], need_weights=need_weights)
 
-            out_tmp = tf_out.view(-1, tf_out.shape[-1])
+            out_tmp = tf_out.view(-1, data['batch_size'], tf_out.shape[-1])
             if self.out_mlp_dim is not None:
                 out_tmp = self.out_mlp(out_tmp)
-            seq_out = self.out_fc(out_tmp).view(tf_out.shape[0], -1, self.forecast_dim)
+            seq_out = self.out_fc(out_tmp).view(tf_out.shape[0], -1, data['batch_size'], self.forecast_dim)
             if self.pred_type == 'scene_norm' and self.sn_out_type in {'vel', 'norm'}:
-                norm_motion = seq_out.view(-1, agent_num * sample_num, seq_out.shape[-1])
+                norm_motion = seq_out.view(-1, agent_num * sample_num, data['batch_size'], seq_out.shape[-1])
                 if self.sn_out_type == 'vel':
                     norm_motion = torch.cumsum(norm_motion, dim=0)
                 if self.sn_out_heading:
+                    import pdb; pdb.set_trace() # make heading fit new shape
                     angles = data['heading'].repeat_interleave(sample_num)
                     norm_motion = rotation_2d_torch(norm_motion, angles)[0]
                 seq_out = norm_motion + pre_motion_scene_norm[[-1]]
-                seq_out = seq_out.view(tf_out.shape[0], -1, seq_out.shape[-1])
+                seq_out = seq_out.view(tf_out.shape[0], -1, data['batch_size'], seq_out.shape[-1])
             if self.ar_detach:
                 out_in = seq_out[-agent_num:].clone().detach()
             else:
@@ -372,7 +374,7 @@ class FutureDecoder(nn.Module):
             out_in_z = torch.cat(in_arr, dim=-1)
             dec_in_z = torch.cat([dec_in_z, out_in_z], dim=0)
 
-        seq_out = seq_out.view(-1, agent_num * sample_num, seq_out.shape[-1])
+        seq_out = seq_out.view(-1, agent_num * sample_num, data['batch_size'], seq_out.shape[-1])
         data[f'{mode}_seq_out'] = seq_out
 
         if self.pred_type == 'vel':
@@ -381,7 +383,7 @@ class FutureDecoder(nn.Module):
         elif self.pred_type == 'pos':
             dec_motion = seq_out.clone()
         elif self.pred_type == 'scene_norm':
-            dec_motion = seq_out + data['scene_orig']
+            dec_motion = seq_out + data['scene_orig'] # scene_orig is [batch_size, data]
         else:
             dec_motion = seq_out + pre_motion[[-1]]
 
@@ -504,66 +506,130 @@ class AgentFormer(nn.Module):
         self.device = device
         self.to(device)
 
-    def set_data(self, data):
+    def set_data(self, data_list):
         device = self.device
-        if self.training and len(data['pre_motion_3D']) > self.max_train_agent:
-            in_data = {}
-            ind = np.random.choice(len(data['pre_motion_3D']), self.max_train_agent).tolist()
-            for key in ['pre_motion_3D', 'fut_motion_3D', 'fut_motion_mask', 'pre_motion_mask', 'heading']:
-                in_data[key] = [data[key][i] for i in ind if data[key] is not None]
-        else:
-            in_data = data
+        # all_keys = ['agent_num', 'pre_motion', 'fut_motion', 'fut_motion_orig', 'fut_mask', 'pre_mask', 
+        #     'scene_orig', 'heading', 'pre_motion_scene_norm', 'fut_motion_scene_norm', 'fut_motion_orig_scene_norm',
+        #     'pre_vel', 'fut_vel', 'cur_motion', 'pre_motion_norm', 'fut_motion_norm', 'heading_vec', 'agent_maps', 'batch_size']
+        processed_data_list = []
 
-        self.data = defaultdict(lambda: None)
-        self.data['batch_size'] = len(in_data['pre_motion_3D'])
-        self.data['agent_num'] = len(in_data['pre_motion_3D'])
-        self.data['pre_motion'] = torch.stack(in_data['pre_motion_3D'], dim=0).to(device).transpose(0, 1).contiguous()
-        self.data['fut_motion'] = torch.stack(in_data['fut_motion_3D'], dim=0).to(device).transpose(0, 1).contiguous()
-        self.data['fut_motion_orig'] = torch.stack(in_data['fut_motion_3D'], dim=0).to(device)   # future motion without transpose
-        self.data['fut_mask'] = torch.stack(in_data['fut_motion_mask'], dim=0).to(device)
-        self.data['pre_mask'] = torch.stack(in_data['pre_motion_mask'], dim=0).to(device)
-        scene_orig_all_past = self.cfg.get('scene_orig_all_past', False)
-        if scene_orig_all_past:
-            self.data['scene_orig'] = self.data['pre_motion'].view(-1, 2).mean(dim=0)
-        else:
-            self.data['scene_orig'] = self.data['pre_motion'][-1].mean(dim=0)
-        if in_data['heading'] is not None:
-            self.data['heading'] = torch.tensor(in_data['heading']).float().to(device)
-
-        # rotate the scene
-        if self.rand_rot_scene and self.training:
-            if self.discrete_rot:
-                theta = torch.randint(high=24, size=(1,)).to(device) * (np.pi / 12)
+        for data in data_list:
+            if self.training and len(data['pre_motion_3D']) > self.max_train_agent:
+                in_data = {}
+                ind = np.random.choice(len(data['pre_motion_3D']), self.max_train_agent).tolist()
+                for key in ['pre_motion_3D', 'fut_motion_3D', 'fut_motion_mask', 'pre_motion_mask', 'heading']:
+                    in_data[key] = [data[key][i] for i in ind if data[key] is not None]
             else:
-                theta = torch.rand(1).to(device) * np.pi * 2
-            for key in ['pre_motion', 'fut_motion', 'fut_motion_orig']:
-                self.data[f'{key}'], self.data[f'{key}_scene_norm'] = rotation_2d_torch(self.data[key], theta, self.data['scene_orig'])
+                in_data = data
+
+            self_data_1 = defaultdict(lambda: None)
+            # self_data_1['batch_size'] = len(in_data['pre_motion_3D'])
+            self_data_1['agent_num'] = len(in_data['pre_motion_3D'])
+            # import pdb; pdb.set_trace()
+            self_data_1['pre_motion'] = torch.stack(in_data['pre_motion_3D'], dim=0).to(device).transpose(0, 1).contiguous()
+            self_data_1['fut_motion'] = torch.stack(in_data['fut_motion_3D'], dim=0).to(device).transpose(0, 1).contiguous()
+            self_data_1['fut_motion_orig'] = torch.stack(in_data['fut_motion_3D'], dim=0).to(device)   # future motion without transpose
+            self_data_1['fut_mask'] = torch.stack(in_data['fut_motion_mask'], dim=0).to(device)
+            self_data_1['pre_mask'] = torch.stack(in_data['pre_motion_mask'], dim=0).to(device)
+            scene_orig_all_past = self.cfg.get('scene_orig_all_past', False)
+            if scene_orig_all_past:
+                self_data_1['scene_orig'] = self_data_1['pre_motion'].view(-1, 2).mean(dim=0)
+            else:
+                self_data_1['scene_orig'] = self_data_1['pre_motion'][-1].mean(dim=0)
             if in_data['heading'] is not None:
-                self.data['heading'] += theta
-        else:
-            theta = torch.zeros(1).to(device)
-            for key in ['pre_motion', 'fut_motion', 'fut_motion_orig']:
-                self.data[f'{key}_scene_norm'] = self.data[key] - self.data['scene_orig']   # normalize per scene
+                self_data_1['heading'] = torch.tensor(in_data['heading']).float().to(device)
 
-        self.data['pre_vel'] = self.data['pre_motion'][1:] - self.data['pre_motion'][:-1, :]
-        self.data['fut_vel'] = self.data['fut_motion'] - torch.cat([self.data['pre_motion'][[-1]], self.data['fut_motion'][:-1, :]])
-        self.data['cur_motion'] = self.data['pre_motion'][[-1]]
-        self.data['pre_motion_norm'] = self.data['pre_motion'][:-1] - self.data['cur_motion']   # normalize pos per agent
-        self.data['fut_motion_norm'] = self.data['fut_motion'] - self.data['cur_motion']
-        if in_data['heading'] is not None:
-            self.data['heading_vec'] = torch.stack([torch.cos(self.data['heading']), torch.sin(self.data['heading'])], dim=-1)
-
-        # agent maps
-        if self.use_map:
-            scene_map = data['scene_map']
-            scene_points = np.stack(in_data['pre_motion_3D'])[:, -1] * data['traj_scale']
-            if self.map_global_rot:
-                patch_size = [50, 50, 50, 50]
-                rot = theta.repeat(self.data['agent_num']).cpu().numpy() * (180 / np.pi)
+            # rotate the scene
+            if self.rand_rot_scene and self.training:
+                if self.discrete_rot:
+                    theta = torch.randint(high=24, size=(1,)).to(device) * (np.pi / 12)
+                else:
+                    theta = torch.rand(1).to(device) * np.pi * 2
+                for key in ['pre_motion', 'fut_motion', 'fut_motion_orig']:
+                    self_data_1[f'{key}'], self_data_1[f'{key}_scene_norm'] = rotation_2d_torch(self_data_1[key], theta, self_data_1['scene_orig'])
+                if in_data['heading'] is not None:
+                    self_data_1['heading'] += theta
             else:
-                patch_size = [50, 10, 50, 90]
-                rot = -np.array(in_data['heading'])  * (180 / np.pi)
-            self.data['agent_maps'] = scene_map.get_cropped_maps(scene_points, patch_size, rot).to(device)
+                theta = torch.zeros(1).to(device)
+                for key in ['pre_motion', 'fut_motion', 'fut_motion_orig']:
+                    self_data_1[f'{key}_scene_norm'] = self_data_1[key] - self_data_1['scene_orig']   # normalize per scene
+
+            self_data_1['pre_vel'] = self_data_1['pre_motion'][1:] - self_data_1['pre_motion'][:-1, :]
+            self_data_1['fut_vel'] = self_data_1['fut_motion'] - torch.cat([self_data_1['pre_motion'][[-1]], self_data_1['fut_motion'][:-1, :]])
+            self_data_1['cur_motion'] = self_data_1['pre_motion'][[-1]]
+            self_data_1['pre_motion_norm'] = self_data_1['pre_motion'][:-1] - self_data_1['cur_motion']   # normalize pos per agent
+            self_data_1['fut_motion_norm'] = self_data_1['fut_motion'] - self_data_1['cur_motion']
+            if in_data['heading'] is not None:
+                self_data_1['heading_vec'] = torch.stack([torch.cos(self_data_1['heading']), torch.sin(self_data_1['heading'])], dim=-1)
+
+            # agent maps
+            if self.use_map:
+                scene_map = data['scene_map']
+                scene_points = np.stack(in_data['pre_motion_3D'])[:, -1] * data['traj_scale']
+                if self.map_global_rot:
+                    patch_size = [50, 50, 50, 50]
+                    rot = theta.repeat(self_data_1['agent_num']).cpu().numpy() * (180 / np.pi)
+                else:
+                    patch_size = [50, 10, 50, 90]
+                    rot = -np.array(in_data['heading'])  * (180 / np.pi)
+                self_data_1['agent_maps'] = scene_map.get_cropped_maps(scene_points, patch_size, rot).to(device)
+
+            #############################################
+            # make agent_num 100 always (agent_maps do later)
+            an = 18
+            num_agent_dim_1 = ['pre_motion', 'fut_motion', 'pre_motion_scene_norm', 'fut_motion_scene_norm', 
+                        'pre_vel', 'fut_vel', 'cur_motion', 'pre_motion_norm', 'fut_motion_norm']
+            num_agent_dim_0 = ['fut_motion_orig', 'fut_mask', 'fut_motion_orig_scene_norm', 'heading', 'heading_vec']
+            for key in self_data_1:
+                if key in num_agent_dim_1:
+                    num_fill = an - self_data_1['agent_num']
+                    z_fill = torch.zeros(*self_data_1[key].shape[:1], num_fill, *self_data_1[key].shape[2:]).cuda()
+                    self_data_1[key] = torch.cat((self_data_1[key], z_fill), dim=1)
+                elif key in num_agent_dim_0:
+                    num_fill = an - self_data_1['agent_num']
+                    z_fill = torch.zeros(num_fill, *self_data_1[key].shape[1:]).cuda()
+                    self_data_1[key] = torch.cat((self_data_1[key], z_fill), dim=0)
+            self_data_1['agent_num'] = an
+            
+            # add pseudo batch # 
+            bs = 1
+            for key in self_data_1: 
+                if key == 'fut_mask':
+                    self_data_1[key] = self_data_1[key].unsqueeze(-1).repeat(1,1,bs)
+                elif key == 'agent_maps':
+                    self_data_1[key] = self_data_1[key].repeat(bs, 1, 1, 1)
+                elif key in ['scene_orig', 'heading']: # 1D tensors -> [batchsize, data]
+                    self_data_1[key] = self_data_1[key].unsqueeze(0).repeat(bs,1)
+                elif key == 'heading_vec':
+                    self_data_1[key] = self_data_1[key].unsqueeze(-2).repeat(1,bs,1)
+                elif torch.is_tensor(self_data_1[key]) and self_data_1[key].dim() == 3:
+                    self_data_1[key] = self_data_1[key].unsqueeze(-2).repeat(1,1,bs,1)
+            # self_data_1['batch_size'] = bs # mimic batch TODO REMOVE
+            
+            processed_data_list.append(self_data_1)
+
+        # add batch # 
+        self.data = processed_data_list[0]
+        bs = len(data_list)
+        for key in self.data:  # mimic batch TODO REMOVE
+            if key == 'agent_maps':
+                self.data[key] = [data[key] for data in processed_data_list]
+            if key == 'fut_mask':
+                tens_list = [data[key] for data in processed_data_list]
+                self.data[key] = torch.cat(tens_list, dim=-1)
+            elif key in ['scene_orig', 'heading']: 
+                tens_list = [data[key] for data in processed_data_list]
+                self.data[key] = torch.cat(tens_list, dim=0)
+            elif (key == 'heading_vec') or (torch.is_tensor(self.data[key]) and self.data[key].dim() == 4):
+                tens_list = [data[key] for data in processed_data_list]
+                self.data[key] = torch.cat(tens_list, dim=-2)
+        self.data['batch_size'] = bs # mimic batch TODO REMOVE
+
+        ## doesn't change:
+        # pre_mask
+        # agent_mask
+        # agent_enc_shuffle
+        #############################################
 
         # agent shuffling
         if self.training and self.ctx['agent_enc_shuffle']:
@@ -574,6 +640,7 @@ class AgentFormer(nn.Module):
         conn_dist = self.cfg.get('conn_dist', 100000.0)
         cur_motion = self.data['cur_motion'][0]
         if conn_dist < 1000.0:
+            import pdb; pdb.set_trace() # assumed we never come here for batching
             threshold = conn_dist / self.cfg.traj_scale
             pdist = F.pdist(cur_motion)
             D = torch.zeros([cur_motion.shape[0], cur_motion.shape[0]]).to(device)
@@ -589,9 +656,22 @@ class AgentFormer(nn.Module):
         for anl in self.param_annealers:
             anl.step()
 
+    def create_map_enc(self):
+        map_encs = []
+        for agent_map in self.data['agent_maps']:
+            map_enc = self.map_encoder(agent_map)
+            map_enc = map_enc.reshape((1, agent_map.shape[0], -1)) # batch logic
+            map_enc = torch.swapaxes(map_enc, 0, 1) # [agent_num, batch_size, emb_size]
+            num_fill = self.data['agent_num'] - map_enc.shape[0]
+            z_fill = torch.zeros(num_fill, *map_enc.shape[1:]).cuda()
+            map_enc = torch.cat((map_enc, z_fill), dim=0)
+            map_encs.append(map_enc)
+        self.data['map_enc'] = torch.cat(map_encs, dim=-2)
+
     def forward(self):
         if self.use_map:
-            self.data['map_enc'] = self.map_encoder(self.data['agent_maps'])
+            self.create_map_enc()
+
         self.context_encoder(self.data)
         self.future_encoder(self.data)
         self.future_decoder(self.data, mode='train', autoregress=self.ar_train)
@@ -601,7 +681,7 @@ class AgentFormer(nn.Module):
 
     def inference(self, mode='infer', sample_num=20, need_weights=False):
         if self.use_map and self.data['map_enc'] is None:
-            self.data['map_enc'] = self.map_encoder(self.data['agent_maps'])
+            self.create_map_enc()
         if self.data['context_enc'] is None:
             self.context_encoder(self.data)
         if mode == 'recon':
