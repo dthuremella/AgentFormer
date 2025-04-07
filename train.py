@@ -38,6 +38,8 @@ def train(epoch):
     while not generator.is_epoch_end():
         data_list = []
         for i in range(batch_size):
+            if generator.is_epoch_end():
+                continue
             data = generator()
             if data is not None:
                 seq, frame = data['seq'], data['frame']
