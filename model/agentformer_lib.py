@@ -744,13 +744,14 @@ class AgentFormerDecoder(Module):
 
         self_attn_weights = [None] * len(self.layers)
         cross_attn_weights = [None] * len(self.layers)
+        scores = [None] * len(self.layers)        
         for i, mod in enumerate(self.layers):
             output, self_attn_weights[i], cross_attn_weights[i] = mod(output, memory, tgt_mask=tgt_mask,
                          memory_mask=memory_mask,
                          tgt_key_padding_mask=tgt_key_padding_mask,
                          memory_key_padding_mask=memory_key_padding_mask,
                          num_agent=num_agent, need_weights=need_weights)
-            output = self.moe_layers[i](output, self.num_experts_per_tok)
+            output, scores[i] = self.moe_layers[i](output, self.num_experts_per_tok)
 
         if self.norm is not None:
             output = self.norm(output)
@@ -759,7 +760,7 @@ class AgentFormerDecoder(Module):
             self_attn_weights = torch.stack(self_attn_weights).cpu().numpy()
             cross_attn_weights = torch.stack(cross_attn_weights).cpu().numpy()
 
-        return output, {'self_attn_weights': self_attn_weights, 'cross_attn_weights': cross_attn_weights}
+        return output, {'self_attn_weights': self_attn_weights, 'cross_attn_weights': cross_attn_weights, 'gating_scores': scores}
 
 
 def _get_clones(module, N):

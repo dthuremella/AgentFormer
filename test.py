@@ -11,14 +11,14 @@ from utils.torch import *
 from utils.config import Config
 from model.model_lib import model_dict
 from utils.utils import prepare_seed, print_log, mkdir_if_missing
-
+import pickle
 
 def get_model_prediction(data, sample_k):
     model.set_data(data)
     recon_motion_3D, _ = model.inference(mode='recon', sample_num=sample_k)
-    sample_motion_3D, data = model.inference(mode='infer', sample_num=sample_k, need_weights=False)
+    sample_motion_3D, data = model.inference(mode='infer', sample_num=sample_k, need_weights=True)
     sample_motion_3D = sample_motion_3D.transpose(0, 1).contiguous()
-    return recon_motion_3D, sample_motion_3D
+    return recon_motion_3D, sample_motion_3D, data['attn_weights']['gating_scores'], data['agent_maps']
 
 def save_prediction(pred, data, suffix, save_dir):
     pred_num = 0
@@ -55,6 +55,7 @@ def save_prediction(pred, data, suffix, save_dir):
 
 def test_model(generator, save_dir, cfg):
     total_num_pred = 0
+    viz_moe = {'scores': [], 'maps': [], 'seq_name': [], 'frame': []}
     while not generator.is_epoch_end():
         data = generator()
         if data is None:
@@ -66,8 +67,12 @@ def test_model(generator, save_dir, cfg):
 
         gt_motion_3D = torch.stack(data['fut_motion_3D'], dim=0).to(device) * cfg.traj_scale
         with torch.no_grad():
-            recon_motion_3D, sample_motion_3D = get_model_prediction(data, cfg.sample_k)
+            recon_motion_3D, sample_motion_3D, scores, maps = get_model_prediction(data, cfg.sample_k)
         recon_motion_3D, sample_motion_3D = recon_motion_3D * cfg.traj_scale, sample_motion_3D * cfg.traj_scale
+        viz_moe['scores'].append(scores)
+        viz_moe['maps'].append(maps)
+        viz_moe['seq'].append(seq_name)
+        viz_moe['frame'].append(frame)
 
         """save samples"""
         recon_dir = os.path.join(save_dir, 'recon'); mkdir_if_missing(recon_dir)
@@ -79,6 +84,7 @@ def test_model(generator, save_dir, cfg):
         num_pred = save_prediction(gt_motion_3D, data, '', gt_dir)              # save gt
         total_num_pred += num_pred
 
+    pickle.dump(viz_moe, open('viz_moe.pkl', 'wb'))
     print_log(f'\n\n total_num_pred: {total_num_pred}', log)
     if cfg.dataset == 'nuscenes_pred':
         scene_num = {

@@ -52,7 +52,7 @@ class MoELayer(nn.Module):
         expert_outputs = torch.stack([expert(x) for expert in self.experts], dim=1)
         expert_outputs = expert_outputs.transpose(1, 2)
         output = torch.einsum('bte,bteo->bto', gating_scores, expert_outputs)
-        return output
+        return output, gating_scores
 
 # Define the overall Transformer model with integrated MoE
 class TransformerWithMoE(nn.Module):
